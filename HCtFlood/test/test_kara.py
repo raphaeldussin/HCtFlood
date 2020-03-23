@@ -2,6 +2,7 @@
 import xarray as xr
 import numpy as np
 import os
+import pytest
 
 
 FIXTURE_DIR = os.path.join(
@@ -20,15 +21,49 @@ def create_arrays(datafile):
     return data, mask
 
 
-data_1deg, mask_1deg = create_arrays('temp_woa13_1deg.nc')
-data_025deg, mask_025deg = create_arrays('temp_woa13_025deg.nc')
+@pytest.mark.parametrize("datafile", ['temp_woa13_1deg.nc',
+                                      'temp_woa13_025deg.nc'])
+def test_flood_kara_raw(datafile):
+    from HCtFlood.kara import flood_kara_raw
+    temp, mask = create_arrays(datafile)
+    out = flood_kara_raw(temp, mask)
+    assert (np.isnan(out) == False).all()
 
 
-def test_kara():
+@pytest.mark.parametrize("datafile", ['temp_woa13_1deg.nc',
+                                      'temp_woa13_025deg.nc'])
+def test_flood_kara_ma(datafile):
+    from HCtFlood.kara import flood_kara_ma
+    ds = xr.open_dataset(FIXTURE_DIR + datafile, decode_times=False)
+    temp = ds['temp'].isel(depth=0).squeeze().to_masked_array()
+    out = flood_kara_ma(temp, spval=1e+15)
+
+    assert isinstance(out, np.ndarray)
+    assert (np.isnan(out) == False).all()
+
+
+@pytest.mark.parametrize("datafile", ['temp_woa13_1deg.nc',
+                                      'temp_woa13_025deg.nc'])
+def test_flood_kara_xr(datafile):
+    from HCtFlood.kara import flood_kara_xr
+    ds = xr.open_dataset(FIXTURE_DIR + datafile, decode_times=False)
+    temp = ds['temp'].isel(depth=0)
+    out = flood_kara_xr(temp, spval=1e+15)
+
+    assert isinstance(out, np.ndarray)
+    assert (np.isnan(out) == False).all()
+
+
+@pytest.mark.parametrize("datafile", ['temp_woa13_1deg.nc',
+                                      'temp_woa13_025deg.nc'])
+def test_flood_kara(datafile):
     from HCtFlood.kara import flood_kara
-    out = flood_kara(data_1deg, mask_1deg)
-    assert (np.isnan(out) == False).all()
+    ds = xr.open_dataset(FIXTURE_DIR + datafile, decode_times=False)
+    temp = ds['temp']
+    out = flood_kara(temp, zdim='depth', tdim='time')
 
-    out = flood_kara(data_025deg, mask_025deg)
+    assert isinstance(out, xr.core.dataarray.DataArray)
+    
+    out.compute()
+
     assert (np.isnan(out) == False).all()
-    return None

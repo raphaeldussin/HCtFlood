@@ -1,9 +1,104 @@
 from numba import njit
 import numpy as np
+from dask.base import tokenize
+import dask.array as dsa
+import xarray as xr
+
+
+def flood_kara(data, xdim='lon', ydim='lat', zdim='z', tdim='time',
+               spval=1e+15):
+    """Apply extrapolation onto land from Kara algo.
+
+    Arguments:
+        data {xarray.DataArray} -- input data
+
+    Keyword Arguments:
+        xdim {str} -- name of x dimension (default: {'lon'})
+        ydim {str} -- name of y dimension (default: {'lat'})
+        zdim {str} -- name of z dimension (default: {'z'})
+        tdim {str} -- name of time dimension (default: {'time'})
+        spval {float} -- missing value (default: {1e+15})
+
+    Returns:
+        xarray.DataArray -- result of the extrapolation
+    """
+    # check for input data shape
+    if tdim not in data.dims:
+        data = data.expand_dims(dim=tdim)
+    if zdim not in data.dims:
+        data = data.expand_dims(dim=zdim)
+
+    nrec = len(data[tdim])
+    nlev = len(data[zdim])
+    ny = len(data[ydim])
+    nx = len(data[xdim])
+    shape = (nrec, nlev, ny, nx)
+    chunks = (1, 1, ny, nx)
+
+    def compute_chunk(zlev, trec):
+        data_slice = data.isel({tdim: trec, zdim: zlev})
+        return flood_kara_xr(data_slice, spval=spval)[None, None]
+
+    name = str(data.name) + '-' + tokenize(data.name, shape)
+    dsk = {(name, rec, lev, 0, 0,): (compute_chunk, lev, rec)
+           for lev in range(nlev)
+           for rec in range(nrec)}
+
+    out = dsa.Array(dsk, name, chunks,
+                    dtype=data.dtype, shape=shape)
+
+    xout = xr.DataArray(data=out, name=str(data.name),
+                        coords={tdim: data[tdim],
+                                zdim: data[zdim],
+                                ydim: data[ydim],
+                                xdim: data[xdim]},
+                        dims=(tdim, zdim, ydim, xdim))
+
+    return xout
+
+
+def flood_kara_xr(dataarray, spval=1e+15):
+    """Apply flood_kara on a xarray.dataarray
+
+    Arguments:
+        dataarray {xarray.DataArray} -- input 2d data array
+
+    Keyword Arguments:
+        spval {float} -- missing value (default: {1e+15})
+
+    Returns:
+        numpy.ndarray -- field after extrapolation
+    """
+
+    masked_array = dataarray.squeeze().to_masked_array()
+    out = flood_kara_ma(masked_array, spval=spval)
+    return out
+
+
+def flood_kara_ma(masked_array, spval=1e+15):
+    """Apply flood_kara on a numpy masked array
+
+    Arguments:
+        masked_array {np.ma.masked_array} -- array to extrapolate
+
+    Keyword Arguments:
+        spval {float} -- missing value (default: {1e+15})
+
+    Returns:
+        out -- field after extrapolation
+    """
+
+    field = masked_array.data
+    field[np.isnan(field)] = spval
+    mask = np.ones(field.shape)
+    mask[masked_array.mask] = 0
+
+    out = flood_kara_raw(field, mask)
+    return out
 
 
 @njit
-def flood_kara(field, mask, spval=1e+15, nmax=1000):
+def flood_kara_raw(field, mask, nmax=1000):
     """Extrapolate land values onto land using the kara method
     (https://doi.org/10.1175/JPO2984.1)
 
@@ -12,7 +107,6 @@ def flood_kara(field, mask, spval=1e+15, nmax=1000):
         mask {np.ndarray} -- land/sea binary mask (0/1)
 
     Keyword Arguments:
-        spval {float} -- missing value (default: {None})
         nmax {int} -- max number of iteration (default: {1000})
 
     Returns:
