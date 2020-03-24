@@ -54,6 +54,9 @@ def flood_kara(data, xdim='lon', ydim='lat', zdim='z', tdim='time',
                                 xdim: data[xdim]},
                         dims=(tdim, zdim, ydim, xdim))
 
+    # rechunk the result
+    xout = xout.chunk({tdim: 1, zdim: nlev, ydim: ny, xdim: nx})
+
     return xout
 
 
