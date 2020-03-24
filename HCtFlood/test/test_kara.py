@@ -41,6 +41,12 @@ def test_flood_kara_ma(datafile):
     assert isinstance(out, np.ndarray)
     assert (np.isnan(out) == False).all()
 
+    # test all values are NaN
+    test = np.ma.masked_array(data=[[np.nan, np.nan],[np.nan, np.nan]],
+                              mask=[[True, True], [True, True]])
+    out = flood_kara_ma(test, spval=1e+15)
+    assert (np.isnan(out) == True).all()
+
 
 @pytest.mark.parametrize("datafile", ['temp_woa13_1deg.nc',
                                       'temp_woa13_025deg.nc'])
@@ -63,7 +69,7 @@ def test_flood_kara(datafile):
     out = flood_kara(temp, zdim='depth', tdim='time')
 
     assert isinstance(out, xr.core.dataarray.DataArray)
-    
+
     out.compute()
 
     assert (np.isnan(out) == False).all()

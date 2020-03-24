@@ -89,11 +89,16 @@ def flood_kara_ma(masked_array, spval=1e+15):
     """
 
     field = masked_array.data
-    field[np.isnan(field)] = spval
-    mask = np.ones(field.shape)
-    mask[masked_array.mask] = 0
 
-    out = flood_kara_raw(field, mask)
+    if np.isnan(field).all():
+        # all the values are NaN, can't do anything
+        out = field.copy()
+    else:
+        # proceed with extrapolation
+        field[np.isnan(field)] = spval
+        mask = np.ones(field.shape)
+        mask[masked_array.mask] = 0
+        out = flood_kara_raw(field, mask)
     return out
 
 
